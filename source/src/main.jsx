@@ -36,23 +36,34 @@ return <div><h2>{KINDS[kind]}</h2>{rows.length===0&&<p>لسه مفيش حاجة 
 function Pic({name}){const[u,setU]=useState('');useEffect(()=>{let o='';sb.storage.from('team-media').download(name).then(({data})=>{if(data){o=URL.createObjectURL(data);setU(o);}});return()=>{if(o)URL.revokeObjectURL(o)};},[name]);return u?<img src={u} alt="" style={{width:'100%',borderRadius:8}}/>:<p>جاري التحميل…</p>;}
 function Vid({name}){const[u,setU]=useState('');const[e,setE]=useState('');const play=async()=>{setE('');const{data,error}=await sb.storage.from('team-media').createSignedUrl(name,300);if(error)setE('تعذر تشغيل الفيديو');else setU(data.signedUrl);};
 return u?<video src={u} controls autoPlay playsInline style={{width:'100%',borderRadius:8}}/>:<div><button type="button" onClick={play}>تشغيل الفيديو</button>{e&&<p className="m">{e}</p>}</div>;}
-function Media({admin}){const[items,setItems]=useState([]);const[msg,setMsg]=useState('');const[busy,setBusy]=useState(false);
-const load=async()=>{const{data}=await sb.storage.from('team-media').list('',{limit:100,sortBy:{column:'created_at',order:'desc'}});const f=(data||[]).filter(x=>x.name&&x.id);
-if(!f.length){setItems([]);return;}setItems(f.map(x=>({name:x.name,at:x.created_at,type:(x.metadata&&x.metadata.mimetype)||''})));};useEffect(()=>{load()},[]);
+function Media({admin}){const[albums,setAlbums]=useState([]);const[cur,setCur]=useState(null);const[nm,setNm]=useState('');const[msg,setMsg]=useState('');
+const loadA=async()=>{const{data}=await sb.from('albums').select('*').order('created_at',{ascending:false});setAlbums(data||[]);};useEffect(()=>{loadA()},[]);
+const addA=async()=>{const n=nm.trim();if(!n)return;const{error}=await sb.from('albums').insert({name:n});if(error)setMsg('تعذر إنشاء الألبوم: '+error.message);else{setNm('');setMsg('');loadA();}};
+if(cur==='root')return <div><button type="button" className="g" onClick={()=>setCur(null)}>رجوع للألبومات</button><Album admin={admin} album={{id:'',name:'صور قديمة بدون ألبوم'}} onGone={()=>setCur(null)}/></div>;
+if(cur)return <div><button type="button" className="g" onClick={()=>{setCur(null);loadA();}}>رجوع للألبومات</button><Album admin={admin} album={cur} onGone={()=>{setCur(null);loadA();}}/></div>;
+return <div><h2>الصور والفيديوهات</h2>{albums.length===0&&<p>لسه مفيش ألبومات.</p>}
+{albums.map(a=><div className="c" key={a.id}><b>{a.name}</b><div><button type="button" onClick={()=>setCur(a)}>فتح الألبوم</button></div></div>)}
+<div className="c"><button type="button" className="g" onClick={()=>setCur('root')}>صور قديمة بدون ألبوم</button></div>
+{admin&&<div className="c"><input placeholder="اسم ألبوم جديد، مثلًا: البروفات" value={nm} onChange={x=>setNm(x.target.value)}/><button type="button" onClick={addA}>إنشاء ألبوم</button>{msg&&<p className="m">{msg}</p>}</div>}</div>;}
+function Album({admin,album,onGone}){const[items,setItems]=useState([]);const[msg,setMsg]=useState('');const[busy,setBusy]=useState(false);const pre=album.id===''?'':album.id+'/';
+const load=async()=>{const{data}=await sb.storage.from('team-media').list(String(album.id),{limit:100,sortBy:{column:'created_at',order:'desc'}});const f=(data||[]).filter(x=>x.name&&x.id);
+setItems(f.map(x=>({name:pre+x.name,at:x.created_at,type:(x.metadata&&x.metadata.mimetype)||''})));};useEffect(()=>{load()},[album.id]);
 const shrink=file=>new Promise(res=>{const img=new Image();const url=URL.createObjectURL(file);img.onload=()=>{const m=1600,r=Math.min(1,m/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=Math.round(img.width*r);c.height=Math.round(img.height*r);c.getContext('2d').drawImage(img,0,0,c.width,c.height);c.toBlob(b=>{URL.revokeObjectURL(url);res(b||file)},'image/jpeg',0.82);};img.onerror=()=>res(file);img.src=url;});
 const up=async e=>{const file=e.target.files[0];e.target.value='';if(!file)return;setMsg('');
 const isI=file.type.startsWith('image/'),isV=file.type.startsWith('video/');if(!isI&&!isV){setMsg('الملف لازم يكون صورة أو فيديو.');return;}
 if(isV&&file.size>50*1024*1024){setMsg('الفيديو أكبر من ٥٠ ميجا. استخدم فيديو أقصر أو مضغوط.');return;}
 setBusy(true);let body=file,ext=(file.name.split('.').pop()||'bin').toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,5)||'bin',ct=file.type;
 if(isI&&file.type!=='image/gif'){body=await shrink(file);if(body!==file){ext='jpg';ct='image/jpeg';}}
-const name=Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
+const name=pre+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.'+ext;
 const{error}=await sb.storage.from('team-media').upload(name,body,{contentType:ct});setBusy(false);
 if(error)setMsg('تعذر الرفع: '+error.message);else{setMsg('تم الرفع.');load();}};
 const del=async n=>{await sb.storage.from('team-media').remove([n]);load();};
-return <div><h2>الصور والفيديوهات</h2>{items.length===0&&<p>لسه مفيش حاجة هنا.</p>}
+const delA=async()=>{if(!window.confirm('حذف الألبوم وكل اللي فيه؟'))return;const{data}=await sb.storage.from('team-media').list(String(album.id),{limit:1000});const names=(data||[]).filter(x=>x.id).map(x=>pre+x.name);if(names.length)await sb.storage.from('team-media').remove(names);await sb.from('albums').delete().eq('id',album.id);onGone();};
+return <div><h2>{album.name}</h2>{items.length===0&&<p>لسه مفيش حاجة هنا.</p>}
 {items.map(x=><div className="c" key={x.name}>{x.type.startsWith('video/')?<Vid name={x.name}/>:<Pic name={x.name}/>}
 {admin&&<button type="button" className="g" onClick={()=>del(x.name)}>حذف</button>}</div>)}
-{admin&&<div className="c"><p>رفع صورة أو فيديو (الفيديو لحد ٥٠ ميجا، والصور بتتصغّر تلقائي).</p><input type="file" accept="image/*,video/*" onChange={up} disabled={busy}/>{busy&&<p>جاري الرفع…</p>}{msg&&<p className={msg.startsWith('تم')?'s':'m'}>{msg}</p>}</div>}</div>;}
+{admin&&album.id!==''&&<div className="c"><p>رفع صورة أو فيديو في الألبوم (الفيديو لحد ٥٠ ميجا، والصور بتتصغّر تلقائي).</p><input type="file" accept="image/*,video/*" onChange={up} disabled={busy}/>{busy&&<p>جاري الرفع…</p>}{msg&&<p className={msg.startsWith('تم')?'s':'m'}>{msg}</p>}</div>}
+{admin&&album.id!==''&&<button type="button" className="g" onClick={delA}>حذف الألبوم</button>}</div>;}
 function App(){const[s,setS]=useState(null);const[prof,setProf]=useState(null);const[tab,setTab]=useState('rehearsal');
 useEffect(()=>{sb.auth.getSession().then(({data})=>setS(data.session));const{data}=sb.auth.onAuthStateChange((_e,x)=>setS(x));return()=>data.subscription.unsubscribe();},[]);
 useEffect(()=>{if(!s){setProf(null);return;}sb.from('profiles').select('*').eq('id',s.user.id).single().then(({data})=>setProf(data));},[s]);
