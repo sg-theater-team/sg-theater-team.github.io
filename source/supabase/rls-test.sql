@@ -1,0 +1,32 @@
+do $$
+declare a uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); n int; r text:='';
+begin
+insert into auth.users(id,email) values (a,'t-admin@test.invalid'),(b,'t-pending@test.invalid'),(c,'t-other@test.invalid');
+update public.profiles set is_admin=true,status='approved' where id=a;
+insert into public.posts(kind,title) values ('note','secret');
+set local role authenticated;
+perform set_config('request.jwt.claims', json_build_object('sub',b,'role','authenticated')::text, true);
+select count(*) into n from public.posts; r:=r||'pending reads posts='||n||'; ';
+select count(*) into n from public.profiles; r:=r||'pending sees profiles='||n||'; ';
+update public.profiles set status='approved' where id=b; get diagnostics n=row_count; r:=r||'pending self-approve rows='||n||'; ';
+begin update public.profiles set is_admin=true where id=b; get diagnostics n=row_count; r:=r||'pending set is_admin rows='||n||'; '; exception when others then r:=r||'pending set is_admin denied; '; end;
+begin insert into public.posts(kind,title) values ('note','x'); r:=r||'pending INSERT ALLOWED(bad); '; exception when others then r:=r||'pending insert denied; '; end;
+reset role;
+update public.profiles set status='approved' where id=b;
+set local role authenticated;
+perform set_config('request.jwt.claims', json_build_object('sub',b,'role','authenticated')::text, true);
+select count(*) into n from public.posts; r:=r||'approved member reads posts='||n||'; ';
+begin insert into public.posts(kind,title) values ('note','x'); r:=r||'member INSERT ALLOWED(bad); '; exception when others then r:=r||'member insert denied; '; end;
+begin update public.profiles set is_admin=true where id=b; get diagnostics n=row_count; r:=r||'member set is_admin rows='||n||'; '; exception when others then r:=r||'member set is_admin denied; '; end;
+update public.profiles set status='approved' where id=c; get diagnostics n=row_count; r:=r||'member approves other rows='||n||'; ';
+reset role;
+set local role authenticated;
+perform set_config('request.jwt.claims', json_build_object('sub',a,'role','authenticated')::text, true);
+select count(*) into n from public.profiles where email like 't-%'; r:=r||'admin sees test profiles='||n||'; ';
+update public.profiles set status='approved' where id=c; get diagnostics n=row_count; r:=r||'admin approves rows='||n||'; ';
+insert into public.posts(kind,title) values ('note','adm'); r:=r||'admin insert ok; ';
+set local role anon;
+begin perform 1 from public.posts; r:=r||'anon read ALLOWED(bad); '; exception when others then r:=r||'anon read denied; '; end;
+reset role;
+raise exception 'RESULT: %', r;
+end $$;
