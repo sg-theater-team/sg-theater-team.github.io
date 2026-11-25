@@ -3,7 +3,7 @@ React + Vite + Supabase. Members need the owner's approval. Live: https://sg-the
 
 ## Build and deploy (exact steps)
 1. `npm install`
-2. Create `.env.production` from `.env.example`: the Supabase project URL and the publishable (anon) key. Never use a secret or service_role key. `.env*` is git-ignored.
+2. Create `.env.production` from `.env.example`: the Supabase project URL and the publishable (anon) key. Never use a secret or service_role key. Copy the full key from the Supabase dashboard (Project Settings > API Keys). Do not scrape it from the built site: the bundle also contains the bare library string `sb_publishable_`, and a build with that prefix as the key broke logins once. `build_single.py` now refuses a wrong project URL or a truncated key. `.env*` is git-ignored.
 3. `npm run build`. vite.config.js sets assetsInlineLimit, so `src/logo.jpg` is inlined into the JS.
 4. `python3 build_single.py` (steps 3 and 4 together: `npm run build:single`). This inlines the JS into one self-contained `dist/single/index.html`.
 5. Deploy: replace the repo-root `index.html` with `dist/single/index.html` (GitHub web editor "Add file > Upload files", or git push). GitHub Pages serves the root file. Everything under `source/` is not served as the site.
@@ -14,6 +14,9 @@ Rebuilding from the committed source with the same env values reproduces the liv
 `supabase/schema.sql` is the live schema (RLS, the media bucket and its policies). Run it in the Supabase SQL editor on a new project.
 Promote the owner by hand only, after the email is confirmed: `update public.profiles set is_admin=true, status='approved' where email='stgoerge448@gmail.com';`
 `supabase/rls-test.sql` is a rolled-back privacy test using synthetic .invalid users.
+
+## Albums
+supabase/albums.sql adds the albums table (run once after schema.sql). Files are stored as `<album id>/<file>` in team-media; old root files show under "صور قديمة بدون ألبوم".
 
 ## Behavior notes
 - Videos use 300 s signed URLs. Photos use an authenticated download (blob URLs).
